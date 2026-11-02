@@ -1,23 +1,15 @@
 #!/usr/bin/env bash
-# List running jupyter kernels, stop kernels with options.
+# jupyter kernels: list or stop started kernels.
+#   jupyter notebook starts kernel per notebook. Zombie kernels accumulate interpreter, modules, memory and CUDA.
 #
-# jupyter starts kernel per open notebook and keeps it after the tab loses focus, so
-# kernels accumulate across a session. Each carries an interpreter, imported modules and
-# memory, which could include CUDA context.
-#
-# This script only acts only on commads with line ipykernel_launcher.
-#
-# Usage:
-#   scripts/jupyter_kernels.sh                  list every kernel
-#   scripts/jupyter_kernels.sh --stop           stop idle jupyter kernels
-#       --stop sends SIGTERM, waits GRACE, then sends SIGKILL
-#   BUSY and (young) < MIN_AGE kernels are skipped: 
-#       BUSY [5]% a (CPU share > BUSY_CPU % is) is considered running
-#       MIN_AGE [120s] young 
-#   scripts/jupyter_kernels.sh --stop --all  # all kernels, including BUSY and MIN_AGE
-#   scripts/jupyter_kernels.sh --stop --older-than <int>  # only older than <int> minutes
-#   scripts/jupyter_kernels.sh --stop --pid <int>         # only kernel with PID Mint>
-#   scripts/jupyter_kernels.sh --stop --parent <str>      # only kernels started by parent <str>
+# jupyter kernels --help
+#   jupyter kernels         # list every kernel
+#   jupyter kernels --stop  # stop idle kernels SIGTERM, wait GRACE [5s], then SIGKILL
+#                           # idle: (CPU Usage < BUSY_CPU [5%] & age > MIN_AGE [120s])
+#   jupyter kernels --stop --all               # all kernels, including BUSY and MIN_AGE
+#   jupyter kernels --stop --older-than <int>  # only older than <int> minutes
+#   jupyter kernels --stop --pid <int>         # only kernel with PID
+#   jupyter kernels --stop --parent <str>      # only kernels started by parent <str>
 set -u
 
 GRACE=${GRACE:-5}          # seconds; grace period between SIGTERM and SIGKILL.
@@ -32,7 +24,7 @@ while [ $# -gt 0 ]; do
     --older-than)  older=${2:?minutes}; shift ;;
     --pid)         want_pid=${2:?pid}; shift ;;
     --parent)      want_parent=${2:?name}; shift ;;
-    -h|--help)     sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)     sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)             echo "unknown argument: $1" >&2; exit 2 ;;
   esac
   shift
@@ -81,7 +73,11 @@ for pid in $(kernels); do
     fi
 done
 
-if [ "$count" = "0" ]; then echo "no kernels match"; exit 0; fi
+if [ "$count" = "0" ]; then
+    echo "No live kernels match args";
+    sed -n '4,12p' "$0" | sed 's/^# \{0,1\}//';
+    exit 0;
+fi
 echo
 echo "$count kernels holding ${total_rss} MB of host memory and ${total_gpu} MiB of device memory"
 

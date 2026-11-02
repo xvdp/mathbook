@@ -1,11 +1,11 @@
 __pycache__/
 .pytest_cache/
+.vscode/
 
 build/
 *.egg-info/
 *.egg
 
-# Jupyter Notebook
 .ipynb_checkpoints
 
 # IPython
