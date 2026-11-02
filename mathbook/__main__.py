@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import sys
+import os
 import argparse
 from pathlib import Path
 
@@ -90,13 +91,10 @@ def make_mathbook2(argv=None):
     ap.add_argument("--force", action="store_true", help=".ipynb: overwrite existing .md")
     ap.add_argument("--compress-fmt", default="webp", choices=("webp", "jpeg"), help="compressed format")
     ap.add_argument("--quality", type=int, default=90, help="compress-fmt qualtiy")
-    ap.add_argument("--clip-long", "--clip_long", type=int, default=100,
-                    help="text outputs above N lines keep head and tail, 0: no clip")
-    ap.add_argument("--fold-long", "--fold_long", type=int, default=20,
-                    help="text outputs above N lines fold, 0: no fold")
-    ap.add_argument("--validate", action="store_true",
-                    help="run into a parallel <stem>.validate set, originals untouched; "
-                         "a later run without it updates originals and deletes the set")
+    ap.add_argument("--clip-long", "--clip_long", type=int, default=100, help="text outputs above N lines keep head and tail, 0: no clip")
+    ap.add_argument("--fold-long", "--fold_long", type=int, default=20, help="text outputs above N lines fold, 0: no fold")
+    ap.add_argument("--validate", action="store_true", help="run into a parallel <stem>.validate set, originals untouched; \
+                    \na later run without it updates originals and deletes the set")
     args = ap.parse_args(argv)
     if args.validate and (args.reuse or args.no_run):
         ap.error("--validate runs the notebook: drop --reuse and --no-run")
@@ -154,3 +152,7 @@ def _to_markdown2(doc, args):
         print(f"  {err}", file=sys.stderr)
         return 1
     return 0
+
+def jupyter_kernels(argv=None):
+    script = Path(__file__).with_name("jupyter_kernels.sh")
+    os.execvp("bash", ["bash", str(script), *(sys.argv[1:] if argv is None else argv)])

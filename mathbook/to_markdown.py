@@ -1,5 +1,7 @@
 """xvdp
 
+DEPRECATE command in favour of <>2.py
+
 .ipynb notebook to .md with fenced python code. Inverse of `to_notebook`.
 
 Code cells become ```python fences. Markdown and raw cells pass verbatim. Image outputs land in

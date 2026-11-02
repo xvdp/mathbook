@@ -1,5 +1,7 @@
 """xvdp
 
+DEPRECATE command in favour of <>2.py
+
 Static .md mirror to .ipynb notebook. Runs .ipynb and mirrors figures into .md.
 
 Takes markdwown ```python ``` code blocks and converts them to juptyer notebook cells.

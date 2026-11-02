@@ -1,4 +1,4 @@
-
+"""@xvdp """
 from setuptools import setup, find_packages
 name = "mathbook"
 def _set_version(version):
@@ -14,7 +14,9 @@ setup(
     packages=packages,
     entry_points={
         'console_scripts': [
-            'mathbook=mathbook.__main__:make_mathbook',
+            'mathbook=mathbook.__main__:make_mathbook', # DEPRECATE command in favour of <>2.py
+            'jupyter-mathbook=mathbook.__main__:make_mathbook2',
+            'jupyter-kernels=mathbook.__main__:jupyter_kernels'
         ]},
     author='xvdp',
     license='MIT',

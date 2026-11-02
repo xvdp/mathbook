@@ -1,55 +1,49 @@
 """xvdp
 
 Static .md mirror to .ipynb notebook. Runs .ipynb and mirrors cell outputs into .md.
+Executes markdwown ```python ``` code blocks in juptyer notebook cells.
 
-Takes markdwown ```python ``` code blocks and converts them to juptyer notebook cells.
-
-Images are named by `# figure: <name>` comment inside drawing block if found.
-Default to first .suptitle() or .set_title(), or 'figure'. All images are prefixed a number.
-
-Python code blocks with first line tag `# figure:` are folded with html <details>
-
+Images are written with name: f"{Path(file).stem}/{i:003d}{name}", where name defaults to:
+1.`# figure: <name>` comment in first code line 2. .suptitle() 3. .set_title(), 4. 'figure'.
 Stale images are removed.
 
-Mirror. Every output of code cell N enters the document, in output order, inside an HTML
-comment pair after the cell's closing fence:
+Python code blocks with first line tag `# figure:` or `# fold` are folded with html <details>
 
-    <!-- outputs 3 -->
+Cell outputs: (images, tables, print() __repr__) are mirrored into .md and fenced
+
+<!-- outputs {i:003d{} -->
     <samp>short&nbsp;stdout&nbsp;or&nbsp;text/plain<br>
     second&nbsp;line</samp>
 
     <details class="mathbook-output">
-    <summary>model.cuda()</summary>
+    <summary>{class.__repr__()}</summary>
 
     ```text
     long text, stderr, tracebacks
     ```
-
     </details>
 
-    ![003 cone geometry](../images/probe_sampling_and_speckle/003_cone_geometry.png)
+    ![{i:003d}{img_name}](../images/{file_name}.stem/{i:003d}_{img_name}.png)
 
     <table> text/html </table>
-    <!-- /outputs -->
+ <!-- /outputs -->
+ 
+    Short text outputs render as `<samp>` lines.
+    Text outputs longer than `clip_long` lines keep head and tail.
+    Text oututs longer than `fold_long` lines fold in `<details>`
+    stderr and tracebacks always fold, summarized in one line. Folded text is fenced.
 
-Images are saved to `<images>/<stem>/NNN_<name>.<ext>`. Each display output renders one MIME
-type, the first of MIME_PRIORITY it carries. The kernel computed the bundle (`_repr_html_`,
-`_repr_png_`, `__repr__`, ...), so rendering imports none of the displayed object's libraries.
+    strip_outputs() drops these  and `<!-- figures N -->` blocks, on read.
 
-Short text outputs render as `<samp>` lines on the page background, as a notebook shows them.
-Text outputs longer than `clip_long` lines keep head and tail; longer than `fold_long` lines
-fold in `<details>` under the cell's last line. stderr and tracebacks always fold, summarized in
-one line. Folded text is fenced.
+Failed notebook run keeps <stem>.ipynb, <stem>.md, images from last good run, and writes
+<stem>_partial.ipynb with outputs up to and including the failing cell.
+    The next successful run deletes <stem>_partial.ipynb.
 
-`strip_outputs` drops these blocks, and legacy `<!-- figures N -->` blocks, on read.
+`run=False` writes <stem>.ipynb only when none exists.
 
-Failure. A failed run leaves `<stem>.ipynb`, the .md and the images as the last good run left
-them, and writes the outputs up to and including the failing cell to `<stem>_partial.ipynb`.
-The next successful run deletes it. `run=False` writes `<stem>.ipynb` only when none exists.
-
-Validation. `validate` runs into a parallel `<stem>.validate` set: .md, .ipynb, image dir. The
-originals stay untouched, and the parallel set holds outputs up to and including a failing
-cell. A later successful run without `validate` updates the originals and deletes the set.
+`validate=True`, writes parallel <stem>.validate. set {.md, .ipynb, image dir}.
+Originals stay untouched, and the parallel set holds outputs up to and including a failing
+    The next successful run deletes <stem>.validate.{} set.
 """
 
 from __future__ import annotations
@@ -114,15 +108,15 @@ def render(src_path,
            validate: bool = False):
     """Run .ipynb, then mirror cell outputs into source .md.
 
-    The document is rewritten only when the run completed without errors, which also deletes
-    a parallel validation set and a failed-run `<stem>_partial.ipynb`. A failed run writes
-    `<stem>_partial.ipynb` and leaves `<stem>.ipynb` untouched; the failure message ends with a
-    note naming the failing cell and both notebooks. `run=False` keeps an existing `<stem>.ipynb`.
+    <stem>.md  is rewritten only when the run completed without errors.
+    Failed completions write `<stem>_partial.ipynb` w/o touching `<stem>.ipynb` and `<stem>.md`
+    Successful completion deletes previous failure and validate runs.
 
     Args:
+        reuse:     only run changed code cells.
         clip_long: text outputs above this many lines keep head and tail. 0 keeps all.
         fold_long: text outputs above this many lines fold. 0 folds none.
-        validate: run into `<stem>.validate` .md, .ipynb and image dir, failing or not.
+        validate: create parallel `<stem>.validate` .md, .ipynb and image di.
 
     Returns:
         (notebook path, code cell count, figure count, failure message or None).

@@ -1,50 +1,57 @@
-# mathbook
+# mathbook .ipynb $\leftrightarrow$ .md
 
-Static jupyter notebooks. 
-- Converts `<file>.md` with fenced python code to `<file>.ipynb` and mirror generated images.
-- Converts `<file>.ipynb` to `<file>.md`.
+Two commands. Bash and linux only
 
-Why:
-- Static clean version.
-- Prevent hanging juptyer kernels for notebooks run but not actively running. Mathbooks are run and the kernel is shut down. leaving a static .md version that only requires an .md viewer.
-- Prevent jupyter notebook internal .json polluting git commits.
-
-`pip install .` adds `mathbook` bash command.
+1. `jupyter mathbook` to create or run a static version of a jupyter notebook
+2. `jupyter kernel` to inspect or stop hanking kernels
 
 
-1. Write markdown file with ```python```  code fences. 
-```python
-# figure: <name> # fences starting with "# figure:"   or "# fold", are folded in .md
-def python_code_to_run()
-    ...
-```
+## 1. `jupyter mathbook <filename>.<md/ipynb>`
 
-2. bash `mathbook <name>.md` or `mathbook <name>.ipynb`.  Converts `.md` <-> `.ipynb`.
+Static jupyter notebooks. Prevent hanging kernels. Avoids git .ipynb mess.
+- Converts `.md` to `.ipynb` and `.ipynb` to `.md`.
+- writes .ipynb images and outpts to fenced blocks.
 
+`pip install .` adds `jupyter mathbook` and `jupyter kernel` bash commands.
+
+
+Write markdown file with ```python```  code fences, or start with ipynb, and run
 ```bash
-mathbook <name>.md | <name>.ipynb # with optional args
+jupyter mathbook <filename>.md # creates <filename>.ipynb, runs, and copies outputs to .md
+# or
+jupyter mathbook <filename>.ipynb # copies .ipynb outputs without running to <filename>.md
+
+# On failure, `<filename>.partial.ipynb` and `.md` up to failed cell are written.
+# Successful rerun overwites the .ipynb and .md, and removes partials
+
+# Optional Args
 # --out <path>         .ipynb dir, ["."] # `Path(<file>.md).parent/out` unless `out` is absolute
 # --images <path>      images dir, ["."] # `<out>/images/<name>/` unless `images` is absolute
 # --compress-fmt <fmt> compression format for high bpp (>.45) images  ["webp"] | "jpeg"
 # --quality <90>       compression quality for webp and jpeg
 # --no-mirror          images not mirrored into .md
+# --validate           writes <file>.validate.ipynb & .validate.md # does not touch existing .md and .ipynb
+#                      successful rerun w/o --validate to overwrite
+
 # --no-run             (only .md -> .ipynb) output .ipynb without running.
 # --reuse              (only .md -> .ipynb) only runs changed code
-# --force              (only .ipynb -> .md). if <name>.md exists overwrite with force.
+
+# --force              (only .ipynb -> .md). if <name>.md exists overwrite.
 ```
+
 
 Example
 ```bash
-cd examples && mathbook TheoremaEgregium.md
+cd examples && jupyter mathbook TheoremaEgregium.md
 ```
 
-Utility: Inspect and/or shutdown jupyter kerneks
+## 2. `jupyter kernels`
+Utility to inspect and/or shutdown jupyter kerne;s
 ```bash
-scripts/jupyter_kernels.sh                          # list jupyter kernels
-scripts/jupyter_kernels.sh --stop                   # stop inactive kernels
-scripts/jupyter_kernels.sh --stop -all              # stop all kernels
-scripts/jupyter_kernels.sh --stop --older-than 60   # stop older than 60 min
-scripts/jupyter_kernels.sh --stop --pid 1021232     # stop by pid
-scripts/jupyter_kernels.sh --stop --parent code     # started by parent process
+jupyter kernels                           # list jupyter kernels
+jupyter kernels --stop                    # stop inactive kernels
+jupyter kernels --stop -all               # stop all kernels
+jupyter kernels --stop --older-than <int> # stop older than <int> minutes
+jupyter kernels --stop --pid <int>        # stop by <int> pid
+jupyter kernels --stop --parent <name>    # started by <name> parent process
 ```
-
