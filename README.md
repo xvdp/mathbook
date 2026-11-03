@@ -1,26 +1,22 @@
 # mathbook .ipynb $\leftrightarrow$ .md
 
-Two commands. Bash and linux only
+Linux bash jupyter notebook management.
 
-1. `jupyter mathbook` to create or run a static version of a jupyter notebook
-2. `jupyter kernel` to inspect or stop hanking kernels
+1. `jupyter mathbook <file.{md, ipynb}>`: bidirectional conversion of .ipynb to static mirror .md
+2. `jupyter kernels [args]`: list or stop hanging kernels (not to be confused with `jupyter kernel` which starts a new kernel).
 
 
-## 1. `jupyter mathbook <filename>.<md/ipynb>`
+### 1. `jupyter mathbook <file>.<md|ipynb>`
 
-Static jupyter notebooks. Prevent hanging kernels. Avoids git .ipynb mess.
-- Converts `.md` to `.ipynb` and `.ipynb` to `.md`.
-- writes .ipynb images and outpts to fenced blocks.
+Static jupyter notebooks. Built to prevent hanging kernels and avoid .ipynb execution state mess in git.
 
 `pip install .` adds `jupyter mathbook` and `jupyter kernel` bash commands.
 
-
-Write markdown file with ```python```  code fences, or start with ipynb, and run
+Write markdown .md file with ```python```  code fences, or start with .ipynb, and run
 ```bash
-jupyter mathbook <filename>.md # creates <filename>.ipynb, runs, and copies outputs to .md
-# or
 jupyter mathbook <filename>.ipynb # copies .ipynb outputs without running to <filename>.md
-
+# or
+jupyter mathbook <filename>.md # creates <filename>.ipynb, runs, and copies outputs to .md
 # On failure, `<filename>.partial.ipynb` and `.md` up to failed cell are written.
 # Successful rerun overwites the .ipynb and .md, and removes partials
 
@@ -46,8 +42,8 @@ Example
 # cd examples && jupyter mathbook TheoremaEgregium.md
 ```
 
-## 2. `jupyter kernels`
-Utility to inspect and/or shutdown jupyter kerne;s
+### 2. `jupyter kernels`
+Utility to inspect and/or shutdown jupyter kernels.
 ```bash
 jupyter kernels                           # list jupyter kernels
 jupyter kernels --stop                    # stop inactive kernels
