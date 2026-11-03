@@ -50,7 +50,7 @@ Utility to inspect and/or shutdown jupyter kerne;s
 ```bash
 jupyter kernels                           # list jupyter kernels
 jupyter kernels --stop                    # stop inactive kernels
-jupyter kernels --stop -all               # stop all kernels
+jupyter kernels --stop --all               # stop all kernels
 jupyter kernels --stop --older-than <int> # stop older than <int> minutes
 jupyter kernels --stop --pid <int>        # stop by <int> pid
 jupyter kernels --stop --parent <name>    # started by <name> parent process
