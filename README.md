@@ -42,7 +42,8 @@ jupyter mathbook <filename>.ipynb # copies .ipynb outputs without running to <fi
 
 Example
 ```bash
-cd examples && jupyter mathbook TheoremaEgregium.md
+# TODO add examples
+# cd examples && jupyter mathbook TheoremaEgregium.md
 ```
 
 ## 2. `jupyter kernels`
