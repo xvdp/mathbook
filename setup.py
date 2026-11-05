@@ -14,7 +14,6 @@ setup(
     packages=packages,
     entry_points={
         'console_scripts': [
-            'mathbook=mathbook.__main__:make_mathbook', # DEPRECATE command in favour of <>2.py
             'jupyter-mathbook=mathbook.__main__:make_mathbook2',
             'jupyter-kernels=mathbook.__main__:jupyter_kernels'
         ]},
@@ -22,5 +21,5 @@ setup(
     license='MIT',
     install_requires=["nbclient", "ipykernel", "jupyter_client", "nbformat"],
     package_dir={name: name,},
-    version=_set_version(version='0.0.1')
+    version=_set_version(version='0.0.2')
 )

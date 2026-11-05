@@ -23,8 +23,8 @@ import json
 import os
 from pathlib import Path
 
-from .to_notebook2 import (FENCE, VALIDATE, add_folds, cell_source, execute, image_dir,
-                           insert_outputs, remove_validation, write_outputs)
+from .to_notebook2 import (FENCE, VALIDATE, add_folds, cell_source, execute, exists_note,
+                           image_dir, insert_outputs, remove_validation, write_outputs)
 
 
 def render_markdown(src_path,
@@ -62,7 +62,7 @@ def render_markdown(src_path,
     stem = src.stem + VALIDATE if validate else src.stem
     out = out_dir / f"{stem}.md"
     if out.exists() and not (force or validate):
-        raise FileExistsError(f"{out} exists, pass force to overwrite")
+        raise FileExistsError(exists_note(out, src.stem))
 
     err = None
     if validate:

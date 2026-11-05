@@ -12,8 +12,10 @@ Python code blocks with first line tag `# figure:` or `# fold` are folded with h
 Cell outputs: (images, tables, print() __repr__) are mirrored into .md and fenced
 
 <!-- outputs {i:003d{} -->
-    <samp>short&nbsp;stdout&nbsp;or&nbsp;text/plain<br>
-    second&nbsp;line</samp>
+    <samp>
+    short stdout or text/plain<br>
+    second line
+    </samp>
 
     <details class="mathbook-output">
     <summary>{class.__repr__()}</summary>
@@ -28,7 +30,8 @@ Cell outputs: (images, tables, print() __repr__) are mirrored into .md and fence
     <table> text/html </table>
  <!-- /outputs -->
  
-    Short text outputs render as `<samp>` lines.
+    Short text outputs render as a `<samp>` HTML block: lines joined by `<br>`, data reprs
+    (lists, tuples, dicts, arrays, tensors) as one wrapped line.
     Text outputs longer than `clip_long` lines keep head and tail.
     Text oututs longer than `fold_long` lines fold in `<details>`
     stderr and tracebacks always fold, summarized in one line. Folded text is fenced.
@@ -39,7 +42,8 @@ Failed notebook run keeps <stem>.ipynb, <stem>.md, images from last good run, an
 <stem>_partial.ipynb with outputs up to and including the failing cell.
     The next successful run deletes <stem>_partial.ipynb.
 
-`run=False` writes <stem>.ipynb only when none exists.
+An existing <stem>.ipynb is overwritten only with `force`. `reuse` without `force` mirrors the
+stored outputs into <stem>.md and keeps <stem>.ipynb.
 
 `validate=True`, writes parallel <stem>.validate. set {.md, .ipynb, image dir}.
 Originals stay untouched, and the parallel set holds outputs up to and including a failing
@@ -48,6 +52,7 @@ Originals stay untouched, and the parallel set holds outputs up to and including
 
 from __future__ import annotations
 
+import atexit
 import hashlib
 import html
 import json
@@ -55,6 +60,8 @@ import os
 import re
 import shutil
 import sys
+import threading
+import time
 from pathlib import Path
 
 FENCE = re.compile(r"^```[ \t]*(\w*)[ \t]*$")
@@ -69,15 +76,19 @@ ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 STYLE = re.compile(r"<style\b[^>]*>.*?</style>[ \t]*\n?", re.S | re.I)
 SCRIPT = re.compile(r"<script\b", re.I)
 ALERT = re.compile(r"\b\w*(?:Error|Warning|Exception):.*")
-SAMP_INLINE = re.compile(r"[\\`*_\[\]~|]")
-SAMP_SPACES = re.compile(r"^ +| {2,}")
-SAMP_BLOCK = re.compile(r"(?:[#>+=-]|\d+[.)])")
+DATA_REPR = re.compile(r"^\s*(?:[\w.]+\()?[\[({]")
+"""Text output whose first line opens a bracket, bare or after `name(`: list, tuple, dict, set,
+`array([`, `tensor([`, `torch.Size([`. `Linear(in_features=...)` and `Sequential(` + newline miss."""
+TAG_START = re.compile(r"<(?=[A-Za-z/!?])")
+ENTITY_LIKE = re.compile(r"&(?=#?\w+;)")
 KERNEL_FILE = re.compile(r"(?:[A-Za-z]:)?[^\s\"'():]*ipykernel_\d+[/\\]\d+\.py")
 """Temporary file ipykernel compiles each cell to: `<tmp>/ipykernel_<pid>/<hash>.py`."""
 VALIDATE = ".validate"
 """Stem suffix of the parallel set a validation run writes."""
 PARTIAL = "_partial"
 """Stem suffix of the notebook a failed run writes beside the last good one."""
+INTERRUPTED = "KeyboardInterrupt"
+"""Prefix of the failure message of a run stopped by Ctrl-C."""
 
 IMAGE_MIMES = ("image/svg+xml", "image/png", "image/jpeg")
 MIME_PRIORITY = (*IMAGE_MIMES, "text/markdown", "text/latex", "text/html", "text/plain")
@@ -105,7 +116,8 @@ def render(src_path,
            reuse: bool = False,
            clip_long: int = 100,
            fold_long: int = 20,
-           validate: bool = False):
+           validate: bool = False,
+           force: bool = False):
     """Run .ipynb, then mirror cell outputs into source .md.
 
     <stem>.md  is rewritten only when the run completed without errors.
@@ -117,6 +129,8 @@ def render(src_path,
         clip_long: text outputs above this many lines keep head and tail. 0 keeps all.
         fold_long: text outputs above this many lines fold. 0 folds none.
         validate: create parallel `<stem>.validate` .md, .ipynb and image di.
+        force: overwrite an existing `<stem>.ipynb`. Absent, an existing one raises
+            FileExistsError before any run, except under `reuse` or `validate`.
 
     Returns:
         (notebook path, code cell count, figure count, failure message or None).
@@ -125,7 +139,6 @@ def render(src_path,
     text = strip_folds(strip_outputs(src.read_text()))
     cells = split_cells(text)
     n_code = sum(1 for kind, _ in cells if kind == "code")
-    nb = build_notebook(cells)
     out_dir = Path(out_dir)
     if not out_dir.is_absolute():
         out_dir = src.parent.joinpath(out_dir).absolute()
@@ -134,6 +147,9 @@ def render(src_path,
     out = out_dir / f"{stem}.ipynb"
     if validate:
         run, reuse = True, False
+    if out.exists() and not (force or validate or reuse):
+        raise FileExistsError(exists_note(out, src.stem))
+    nb = build_notebook(cells)
     executed = run and not reuse and n_code
     if reuse:
         err = reuse_outputs(nb, out) if n_code else None
@@ -147,10 +163,10 @@ def render(src_path,
         err = f"{err}\n{failure_note(nb, err, partial, out)}"
         return partial, n_code, 0, err
     if err is None or validate:
-        if run or reuse or not out.exists():
+        if force or validate or not out.exists():
             out.write_text(json.dumps(nb, indent=1))
         else:
-            print(f"kept existing {out}: --no-run writes a notebook only when none exists")
+            print(f"kept existing {out}: --force overwrites it")
 
     # overwrite .md only on sucessful run; a validation set records failures too.
     n_fig = 0
@@ -166,6 +182,12 @@ def render(src_path,
     return out, n_code, n_fig, err
 
 
+def exists_note(path, stem):
+    """Refusal message for an existing conversion target."""
+    return (f"{path} exists: --force overwrites it, "
+            f"--validate writes a parallel {stem}{VALIDATE} set")
+
+
 def failure_note(nb, err, partial, previous):
     """Banner closing a failed-run message: failing code cell, reason, both notebook paths.
 
@@ -179,8 +201,8 @@ def failure_note(nb, err, partial, previous):
         failing = next((i for i, cell in enumerate(code) if not cell.get("execution_count")),
                        len(code) - 1)
     errors = [o for o in code[failing].get("outputs", []) if o.get("output_type") == "error"]
-    reason = (f"{errors[0].get('ename')}: {errors[0].get('evalue')}" if errors
-              else err.strip().split("\n", 1)[0])
+    reason = (": ".join(filter(None, (errors[0].get("ename"), errors[0].get("evalue"))))
+              if errors else err.strip().split("\n", 1)[0])
     first = next((line.strip() for line in cell_source(code[failing]).split("\n") if line.strip()), "")
     rule = "!" * 72
     lines = [rule,
@@ -456,24 +478,22 @@ def text_block(text, clip_long=100, fold_long=20, summary=None, cause=""):
 
 
 def samp_block(lines):
-    """Markdown lines of one unfolded text output: `<samp>` lines joined by `<br>`.
+    """Markdown lines of one unfolded text output: a `<samp>` HTML block.
 
-    The lines form one markdown paragraph, so they render on the page background in monospace.
-    Characters markdown would format become HTML entities: `& < >`, inline markup
-    ``\\ ` * _ [ ] ~ |``, a line-leading block marker (`# > + = -`, `1.`), and every leading
-    space or space run, kept as `&nbsp;` so columns stay aligned. An empty line is a bare `<br>`,
-    which keeps the paragraph whole.
+    CommonMark (HTML block, type 7) reads a line holding only `<samp>` as an HTML block opener and
+    passes every line up to the next blank line unparsed, so markdown characters stay literal.
+    HTML collapses whitespace: a space run renders as one space, a newline as a space. Data reprs
+    (`DATA_REPR`) flow as one wrapped line; other text keeps its lines with `<br>`. A blank line
+    would close the block: data drops it, other text keeps it as a bare `<br>`. Escaped: `<`
+    before a tag-like character as `&lt;`, `&` before an entity-like run as `&amp;`.
     """
-    out = []
-    for line in lines:
-        line = html.escape(line, quote=False)
-        line = SAMP_INLINE.sub(lambda hit: f"&#{ord(hit.group())};", line)
-        line = SAMP_SPACES.sub(lambda hit: "&nbsp;" * len(hit.group()), line)
-        if SAMP_BLOCK.match(line):
-            line = f"&#{ord(line[0])};{line[1:]}"
-        out.append(line)
-    return [f"<samp>{line}" if not i else line for i, line in enumerate(
-        [line + "<br>" for line in out[:-1]] + [out[-1] + "</samp>"])]
+    data = bool(DATA_REPR.match(lines[0]))
+    lines = [TAG_START.sub("&lt;", ENTITY_LIKE.sub("&amp;", line)) for line in lines]
+    if data:
+        body = [line for line in lines if line.strip()]
+    else:
+        body = [line + "<br>" for line in lines[:-1]] + lines[-1:]
+    return ["<samp>", *body, "</samp>"]
 
 
 def html_block(raw):
@@ -620,7 +640,8 @@ def cell_ids(cells):
 
 def build_notebook(cells):
     """An nbformat v4 notebook dict from (kind, source) pairs."""
-    print(f"building notebook with {len(cells)} cells")
+    n_code = sum(1 for kind, _ in cells if kind == "code")
+    print(f"building notebook: {len(cells)} cells, {n_code} code")
     return {
         "cells": [
             {
@@ -654,8 +675,14 @@ def execute(nb, cwd, keep_partial=False):
 
     Kernel follows interpreter.
     Substitutes `sys.executable`, so a .ipynb executes under invoked environment.
+
+    Logs `cell k of n: <first line>  (<seconds>s)` per code cell to stdout.
+
+    Ctrl-C: nbclient runs in a worker thread, where it installs no signal handlers, so SIGINT
+    reaches this thread. The first Ctrl-C interrupts the kernel, as the Jupyter stop button does:
+    the running cell records a KeyboardInterrupt traceback and later cells do not run. The second
+    kills the kernel. Either returns a message starting with INTERRUPTED.
     """
-    print("executing notebook")
     try:
         import nbformat
         from jupyter_client.kernelspec import KernelSpecManager
@@ -679,39 +706,130 @@ def execute(nb, cwd, keep_partial=False):
     client = NotebookClient(node, km=manager, timeout=cell_timeout,
                             resources={"metadata":{"path": str(cwd)}})
 
-    # Watchdog culls zombie kernels cells killed by backend abort.
-    state = {"cell": "startup"}
+    # code cell ordinal per notebook cell index; `cell` holds the running code cell ordinal
+    ordinal = {i: k for k, i in enumerate(
+        i for i, cell in enumerate(node.cells) if cell.cell_type == "code")}
+    n_code = len(ordinal)
+    # open: a cell log line awaits its time; stop: a Ctrl-C arrived
+    state = {"cell": None, "start": 0.0, "killed": False, "open": False, "stop": False}
+
+    def where():
+        return "startup" if state["cell"] is None else f"code cell {state['cell'] + 1} of {n_code}"
 
     def on_cell_start(cell=None, cell_index=None, **_):
-        state["cell"] = cell_index
+        if cell_index not in ordinal:
+            return
+        state["cell"], state["start"] = ordinal[cell_index], time.monotonic()
+        if state["stop"]:  # a kernel that ignored the interrupt finished its cell
+            raise Stopped(f"Ctrl-C before {where()}")
+        first = next((line.strip() for line in cell.source.split("\n") if line.strip()), "")
+        # nbclient skips empty cells: no on_cell_executed closes their line
+        print(f"  {where()}: {first[:60]}", end="" if first else "  (empty)\n", flush=True)
+        state["open"] = bool(first)
+
+    def on_cell_executed(cell=None, cell_index=None, **_):
+        print(f"  ({time.monotonic() - state['start']:.1f}s)", flush=True)
+        state["open"] = False
 
     client.on_cell_start = on_cell_start
+    client.on_cell_executed = on_cell_executed
     try:
         from .watchdog import undertaker
 
-        guard = undertaker(manager.is_alive,
-                           lambda: f"jupyter kernel cell {state['cell']} of {len(node.cells)}")
+        # a kernel killed by the second Ctrl-C is not a zombie
+        guard = undertaker(lambda: state["killed"] or manager.is_alive(),
+                           lambda: f"jupyter kernel {where()}")
     except ImportError:
         import contextlib  # noqa: PLC0415
 
         guard = contextlib.nullcontext()
-    try:
-        with guard:
+
+    raised = {}
+
+    def run():
+        try:
             # nbclient shuts down only kernels it owns; a caller-supplied `km` stays alive
             # unless `cleanup_kc`. Cleanup runs on success and on cell errors alike: kernel
             # shutdown, connection file removal, client zmq channels closed.
             client.execute(cleanup_kc=True)
-        err = None
-    except Exception as exc:  # nbclient raises CellExecutionError and kernel errors alike
-        err = ANSI.sub("", f"{type(exc).__name__}: {exc}")
+        except Exception as exc:  # nbclient raises CellExecutionError and kernel errors alike
+            raised["exc"] = exc
+
+    print(f"executing notebook: {n_code} code cells")
+    worker = threading.Thread(target=run, name="nbclient", daemon=True)
+    try:
+        with guard:
+            worker.start()
+            hits = join_interruptible(worker, manager, state, where)
     finally:
-        # Interrupts that bypass nbclient cleanup.
+        # Interrupts that bypass nbclient cleanup. A worker abandoned by Ctrl-C leaves nbclient's
+        # atexit cleanup registered, which would fail on the kernel shut down here.
         if manager.has_kernel:
             manager.shutdown_kernel(now=True)
+        atexit.unregister(client._cleanup_kernel)
+    exc = raised.get("exc")
+    if hits:
+        mark_interrupted(node, state["cell"], ordinal, state["killed"])
+        err = f"{INTERRUPTED}: Ctrl-C at {where()}"
+    elif worker.is_alive():
+        err = f"kernel unresponsive at {where()}"
+    else:
+        err = None if exc is None else ANSI.sub("", f"{type(exc).__name__}: {exc}")
     if err is None or keep_partial:
         nb.clear()
         nb.update(json.loads(nbformat.writes(node)))
     return err
+
+
+class Stopped(Exception):
+    """Raised from nbclient's cell start hook after a Ctrl-C: no further cell starts."""
+
+
+def join_interruptible(worker, manager, state, where, grace=2.0):
+    """Join `worker`. First Ctrl-C interrupts the kernel, second kills it. Returns Ctrl-C count.
+
+    A Ctrl-C during kernel startup kills at once: no cell runs to interrupt. After the kill the
+    worker gets `grace` seconds to notice the dead kernel; a daemon thread, it is left behind.
+    """
+    hits = 0
+    while worker.is_alive():
+        try:
+            worker.join(0.2)
+        except KeyboardInterrupt:
+            hits += 1
+            newline = "\n" if state["open"] else ""
+            state["open"], state["stop"] = False, True
+            if hits == 1 and state["cell"] is not None:
+                print(f"{newline}Ctrl-C: interrupting {where()}; Ctrl-C again kills the kernel",
+                      file=sys.stderr, flush=True)
+                try:
+                    manager.interrupt_kernel()
+                    continue
+                except RuntimeError:  # kernel already gone
+                    pass
+            print(f"{newline}Ctrl-C: killing the kernel at {where()}", file=sys.stderr, flush=True)
+            state["killed"] = True
+            manager.shutdown_kernel(now=True)
+            worker.join(grace)
+            break
+    return hits
+
+
+def mark_interrupted(node, cell, ordinal, killed):
+    """Give the interrupted code cell an error output when the kernel recorded none.
+
+    A killed kernel sends no traceback; `failure_note` finds the failing cell by its error output.
+    """
+    if cell is None:
+        return
+    index = next(i for i, k in ordinal.items() if k == cell)
+    outputs = node.cells[index].setdefault("outputs", [])
+    if not any(output.get("output_type") == "error" for output in outputs):
+        import nbformat  # noqa: PLC0415
+
+        outputs.append(nbformat.v4.new_output(
+            "error", ename="KeyboardInterrupt",
+            evalue="kernel killed" if killed else "interrupted", traceback=[]))
 
 
 def image_dir(images, notebook_dir, notebook_name):

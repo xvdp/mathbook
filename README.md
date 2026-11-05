@@ -10,30 +10,44 @@ Linux bash jupyter notebook management.
 
 Static jupyter notebooks. Built to prevent hanging kernels and avoid .ipynb execution state mess in git.
 
-`pip install .` adds `jupyter mathbook` and `jupyter kernel` bash commands.
+`pip install .` adds `jupyter mathbook` and `jupyter kernels` bash commands.
 
 Write markdown .md file with ```python```  code fences, or start with .ipynb, and run
 ```bash
-jupyter mathbook <filename>.ipynb # copies .ipynb outputs without running to <filename>.md
+jupyter mathbook <file>.ipynb   # copies outputs to: <file>.md
 # or
-jupyter mathbook <filename>.md # creates <filename>.ipynb, runs, and copies outputs to .md
-# On failure, `<filename>.partial.ipynb` and `.md` up to failed cell are written.
-# Successful rerun overwites the .ipynb and .md, and removes partials
-
-# Optional Args
-# --out <path>         .ipynb dir, ["."] # `Path(<file>.md).parent/out` unless `out` is absolute
-# --images <path>      images dir, ["."] # `<out>/images/<name>/` unless `images` is absolute
-# --compress-fmt <fmt> compression format for high bpp (>.45) images  ["webp"] | "jpeg"
-# --quality <90>       compression quality for webp and jpeg
-# --no-mirror          images not mirrored into .md
-# --validate           writes <file>.validate.ipynb & .validate.md # does not touch existing .md and .ipynb
-#                      successful rerun w/o --validate to overwrite
-
-# --no-run             (only .md -> .ipynb) output .ipynb without running.
-# --reuse              (only .md -> .ipynb) only runs changed code
-
-# --force              (only .ipynb -> .md). if <name>.md exists overwrite.
+jupyter mathbook <file>.md      # creates and runs <file>.ipynb, and copies outputs to <file>.md
 ```
+* On failure, `<file>_partial.ipynb` and `.md` up to failed cell are written.
+* Subsequent successful rerun overwites `<file>.ipynb` and `<file>.md`, and removes partials
+
+If opposite md<->ipynb exists nothing is run unless:
+```bash
+jupyter mathbook <file>.{ipynb|md} --force  # Overwrites old
+jupyter mathbook <file>.ipynb --force  --no-mirror # restores unrun state on .md
+```
+### Other optional args
+```bash
+--out <path>         # .ipynb dir, ["."] # `Path(<file>.md).parent/out` unless `out` is absolute
+--images <path>      # images dir, ["."] # `<out>/images/<name>/` unless `images` is absolute
+--compress-fmt <fmt> # compression format for high bpp (>.45) images  ["webp"] | "jpeg"
+--quality <90>       # compression quality for webp and jpeg
+--validate           # writes <file>.validate.ipynb & .validate.md # does not touch existing .md and .ipynb
+                     # successful rerun w/o --validate to overwrite
+# Only ,.md -> .ipynb
+--no-run             # output .ipynb without running.
+--reuse              # only runs changed code
+```
+
+
+### Ctrl-C
+1. first Ctrl-C interrupts  kernel like jupyter's stop button. Cell keeps output + KeyboardInterrupt traceback.
+2. second Ctrl-C, kills the kernel. The cell gets the error KeyboardInterrupt.
+3. Ctrl-C during kernel startup	Kills the kernel straight away.
+
+After any of these:
+* `<file>_partial.` files are written and the failure banner prints.
+* `<file>.ipynb`, `<file>.md` and the images stay unchanged.
 
 
 Example
